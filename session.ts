@@ -9,8 +9,10 @@ import {
 import * as message from "./message.ts";
 import { Indexer } from "./indexer.ts";
 import { ResponseWaiter } from "./response_waiter.ts";
+import {extensionCodec} from "./custom_codec.ts";
 
 const MSGID_THRESHOLD = 2 ** 32;
+
 
 /**
  * Method dispatcher
@@ -113,7 +115,7 @@ export class Session implements Disposable {
       return [result, error];
     })();
     const response: message.ResponseMessage = [1, msgid, error, result];
-    await this.send(encode(response));
+    await this.send(encode(response, {extensionCodec}));
   }
 
   private handleResponse(response: message.ResponseMessage): void {
@@ -134,7 +136,7 @@ export class Session implements Disposable {
   }
 
   private async listen(): Promise<void> {
-    const iter = decodeStream(io.iter(this.#reader));
+    const iter = decodeStream(io.iter(this.#reader), {extensionCodec});
     try {
       while (!this.#closed) {
         const { done, value } = await Promise.race([
@@ -152,7 +154,6 @@ export class Session implements Disposable {
           this.handleNotification(value);
         } else {
           console.warn(`Unexpected data received: ${value}`);
-          continue;
         }
       }
     } catch (e) {
@@ -198,7 +199,7 @@ export class Session implements Disposable {
     const data: message.RequestMessage = [0, msgid, method, params];
     const [_, response] = await Promise.race([
       this.#closedSignal,
-      Promise.all([this.send(encode(data)), this.#waiter.wait(msgid)]),
+      Promise.all([this.send(encode(data, {extensionCodec})), this.#waiter.wait(msgid)]),
     ]);
     const [err, result] = response.slice(2);
     if (err) {
@@ -219,7 +220,7 @@ export class Session implements Disposable {
       throw new SessionClosedError();
     }
     const data: message.NotificationMessage = [2, method, params];
-    await Promise.race([this.#closedSignal, this.send(encode(data))]);
+    await Promise.race([this.#closedSignal, this.send(encode(data, {extensionCodec}))]);
   }
 
   /**
